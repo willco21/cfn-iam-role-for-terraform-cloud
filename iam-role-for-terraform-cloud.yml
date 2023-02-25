@@ -1,0 +1,73 @@
+Parameters:
+  TfcOrganizationName:
+    Type: String
+    Default: my-terraform-organization
+  TfcProjectName:
+    Type: String
+    Default: 'Default Project'
+  TfcWorkspaceName:
+    Type: String
+    Default: my-terraform-workspace
+  TerraformCloudThumbprint:
+    Type: CommaDelimitedList
+    Default: example98bab03faadb97b34396831e3780aea1
+    Description: >
+      Comma separated list of thumbprints for GitHub Actions tokens.
+  AudienceList:
+    Type: CommaDelimitedList
+    Default: aws.workload.identity
+    Description: >
+      Default is audience for the official AWS configure action from https://github.com/hashicorp/terraform-dynamic-credentials-setup-examples/blob/main/aws/vars.tf#L4-L8
+  Path:
+    Type: String
+    Description: IAM Path required for the role
+    Default: /terraform-cloud/
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Terraform Cloud Info"
+        Parameters:
+          - TfcOrganizationName
+          - TfcProjectName
+          - TfcWorkspaceName
+          - TerraformCloudThumbprint
+          - AudienceList
+      - Label:
+          default: "AWS IAM Info"
+        Parameters:
+          - Path
+Resources:
+  TerraformCloudIdentityProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://app.terraform.io
+      ThumbprintList: !Ref TerraformCloudThumbprint
+      ClientIdList: !Ref AudienceList
+  TerraformCloudIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: TerraformCloudRole
+      Path: !Ref Path
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !GetAtt TerraformCloudIdentityProvider.Arn
+            Action: 'sts:AssumeRoleWithWebIdentity'
+            Condition:
+              StringEquals:
+                'app.terraform.io:aud': !Ref AudienceList
+              StringLike:
+                'app.terraform.io:sub': !Sub 'organization:${TfcOrganizationName}:project:${TfcProjectName}:workspace:${TfcWorkspaceName}:run_phase:*'
+      Description: IAM Role for deploy by Terraform cloud
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      Tags:
+        -
+          Key: Name
+          Value: TerraformCloudRole
+        - Key: Project
+          Value: !Ref TfcProjectName
